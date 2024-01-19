@@ -1,0 +1,77 @@
+name: Node.js CI/CD Pipeline
+
+on:
+  push:
+    branches:
+    - master
+
+jobs:
+  build_and_push_docker_image:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: 'Build Docker Image-App'
+      run: |
+        docker build -t twizoff/devops-assignment:latest .
+
+    - name: 'Build Docker Image-Migrate'
+      run: |
+        docker build -t twizoff/devops-migrate:latest .
+
+    - name: 'Push Docker Image-App'
+      run: |
+        echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u twizoff --password-stdin
+        docker push twizoff/devops-assignment:latest
+
+    - name: 'Push Docker Image-Migrate'
+      run: |
+        echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u twizoff --password-stdin
+        docker push twizoff/devops-migrate:latest
+
+  deploy_to_server:
+    runs-on: ubuntu-latest
+    needs: build_and_push_docker_image
+    steps:
+    - name: 'SSH into the server and deploy'
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USERNAME }}
+        password: ${{ secrets.SERVER_PASSWORD }}
+        port: ${{ secrets.PORT }}
+        script: |
+          whoami
+
+    - uses: actions/checkout@v3
+
+    - name: Copy docker files
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USERNAME }}
+        key: ${{ secrets.PUBLIC_SSH_KEY }}
+        port: ${{ secrets.PORT }}
+        source: "docker-compose.yml"
+        target: "/opt/docker"
+        force: true
+        recursive: true
+
+    - name: SSH Deploy
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USERNAME }}
+        key: ${{ secrets.PUBLIC_SSH_KEY }}
+        port: ${{ secrets.PORT }}
+        script: "whoami      \ncd /opt/docker/\nls\ndocker-compose build\ndocker-compose up -d\n"
