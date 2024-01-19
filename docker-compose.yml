@@ -1,0 +1,67 @@
+version: '3'
+
+networks:
+  rolla_network:
+    driver: bridge
+
+services:
+  redis:
+    image: redis:latest
+    networks:
+      - rolla_network
+    volumes:
+      - redis_data:/data
+    environment:
+      - REDIS_PASSWORD=testredis123!
+    ports:
+      - "6379:6379"
+
+  mariadb:
+    image: mariadb:latest
+    networks:
+      - rolla_network
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=rolla_demo
+      - MYSQL_USER=rolla_test
+      - MYSQL_PASSWORD=your_db_password
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p root_password"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  migrate:
+    image: twizoff/devops-migrate:latest
+    depends_on:
+      - mariadb
+    networks:
+      - rolla_network
+    environment:
+      - DATABASE_URL=mysql://root:root_password@mariadb:3306/rolla_demo
+
+  app:
+    image: twizoff/devops-assignment:latest
+    ports:
+      - "3000:3000"  # Main application port
+      - "9100:9100"  # Metrics port
+    depends_on:
+      - mariadb
+      - redis
+      - migrate
+    networks:
+      - rolla_network
+    environment:
+      - DATABASE_URL=mysql://root:root_password@mariadb:3306/rolla_demo
+      - REDIS_HOST=redis  # using service name as hostname since they are in the same network
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=testredis123!
+
+
+volumes:
+  mariadb_data:
+  redis_data:

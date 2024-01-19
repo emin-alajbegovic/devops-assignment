@@ -1,0 +1,30 @@
+FROM node:16
+
+WORKDIR /app
+
+# Install netcat (if needed for health checks)
+RUN apt-get update && apt-get install -y netcat wget
+
+# Download wait-for-it.sh
+RUN wget https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh -O /usr/local/bin/wait-for-it.sh
+
+# Make wait-for-it.sh executable
+RUN chmod +x /usr/local/bin/wait-for-it.sh
+
+# Install prisma
+RUN npm install -g prisma
+
+COPY prisma/schema.prisma /app/prisma/
+
+# Create a directory for the migrations scripts
+RUN mkdir -p /app/prisma/migrations
+COPY prisma/migrations /app/prisma/migrations
+
+# Copy the apply-migrations.sh script into the image
+COPY apply-migrations.sh /app/
+
+# Ensure the script is executable
+RUN chmod +x /app/apply-migrations.sh
+
+# Execute migration script and then exit
+CMD ["bash", "-c", "/usr/local/bin/wait-for-it.sh mariadb:3306 -t 60 && /app/apply-migrations.sh; exit 0"]
